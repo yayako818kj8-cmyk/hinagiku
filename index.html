@@ -1,136 +1,190 @@
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>横スクロールマンガ</title>
+<title>ひなぎく見参</title>
 
 <style>
-  /* ===== 基本 ===== */
-  body {
-    margin: 0;
-    overflow: hidden; /* bodyはスクロールさせない */
-    background: #000;
+  * {
+    box-sizing: border-box;
   }
 
-  /* ===== 読了率バー ===== */
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  /* 画面上部の進捗バー */
   #progress {
     position: fixed;
     top: 0;
     left: 0;
     height: 6px;
     width: 100%;
-    background: rgba(255,255,255,0.2);
+    background: rgba(0, 0, 0, 0.15);
     z-index: 1000;
   }
 
   #progress-bar {
     height: 100%;
     width: 0%;
-    background: #00ffcc;
+    background: #00ccaa;
     transition: width 0.1s;
   }
 
-  /* ===== マンガコンテナ ===== */
+  /* 漫画を横に並べる領域 */
   #container {
     display: flex;
-    flex-direction: row-reverse; /* 右 → 左 */
-    height: 100vh;
-
-    overflow-x: scroll;
+    flex-direction: row;
+    height: 100dvh;
+    width: 100vw;
+    overflow-x: auto;
     overflow-y: hidden;
-
     scroll-behavior: smooth;
+    background: #fff;
+    direction: rtl;
+    scrollbar-width: none;
   }
 
-  /* ===== 1コマ ===== */
+  #container::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 画像の実際の横幅に合わせる */
   .page {
-    flex: 0 0 100vw; /* 1コマ＝画面幅 */
-    height: 100vh;
+    flex: 0 0 auto;
+    width: auto;
+    height: 100%;
+    background: #fff;
+    direction: ltr;
   }
 
+  /* 縦幅を画面いっぱいにし、横幅は比率に合わせる */
   .page img {
-    width: 100%;
     height: 100%;
-    object-fit: contain;
+    width: auto;
+    max-width: none;
     display: block;
   }
 
-  /* ===== アンケートページ ===== */
-  #survey {
-    flex: 0 0 100vw;
-    height: 100vh;
-    background: #fff;
+  /* エラーメッセージ */
+  #error {
+    position: fixed;
+    top: 20px;
+    left: 12px;
+    right: 12px;
     color: #000;
-
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-  }
-
-  #survey h1 {
-    margin-bottom: 0.5rem;
-  }
-
-  iframe {
-    width: 90%;
-    height: 70%;
-    border: none;
+    background: #fff;
+    z-index: 2000;
+    overflow-wrap: anywhere;
   }
 </style>
 </head>
 
 <body>
 
-<!-- 読了率バー -->
 <div id="progress">
   <div id="progress-bar"></div>
 </div>
 
-<!-- マンガ本体 -->
 <div id="container"></div>
+<div id="error"></div>
 
 <script>
 const container = document.getElementById("container");
 const progressBar = document.getElementById("progress-bar");
+const errorBox = document.getElementById("error");
 
-/* ===== マンガ画像を読み込む ===== */
-fetch("pages.json")
-  .then(res => res.json())
-  .then(data => {
+/* 実際の画像フォルダ名に合わせる */
+const imageFolder = "./hinagikukennzann/";
 
-    data.forEach(file => {
+/* 画像ファイル名の一覧を読み込む */
+fetch("./hinagiku.txt")
+  .then(response => {
+    if (!response.ok) {
+      throw new Error(
+        "youchien.txt を読み込めません。HTTP " + response.status
+      );
+    }
+    return response.json();
+  })
+  .then(files => {
+    if (!Array.isArray(files) || files.length === 0) {
+      throw new Error(
+        "youchien.txt に画像ファイル名がありません。"
+      );
+    }
+
+    files.forEach(file => {
       const page = document.createElement("div");
       page.className = "page";
 
       const img = document.createElement("img");
-      img.src = "pages/" + file;
+      img.src = imageFolder + file;
+      img.alt = file;
+
+      img.onerror = () => {
+        errorBox.textContent =
+          "画像が見つかりません: " + img.src;
+      };
 
       page.appendChild(img);
       container.appendChild(page);
     });
 
-    /* ===== アンケートページ ===== */
-    const survey = document.createElement("div");
-    survey.id = "survey";
-    survey.innerHTML = `
-      <h1>アンケートにご協力ください</h1>
-      <p>ご意見は今後の研究に活用します。</p>
-      <iframe src="https://docs.google.com/forms/d/1e4g9vLe-CaiT-30MiuNK_9ZcCsplhU55qEbK2p2E_zo/viewform"></iframe>
-    `;
-    container.appendChild(survey);
+    /* 画像の読み込み後、右端から開始 */
+    const images = container.querySelectorAll("img");
+    let loadedCount = 0;
+
+    function finishLoading() {
+      loadedCount++;
+
+      if (loadedCount === images.length) {
+        requestAnimationFrame(() => {
+          container.scrollLeft = container.scrollWidth;
+          updateProgress();
+        });
+      }
+    }
+
+    images.forEach(img => {
+      if (img.complete) {
+        finishLoading();
+      } else {
+        img.addEventListener("load", finishLoading, { once: true });
+        img.addEventListener("error", finishLoading, { once: true });
+      }
+    });
+  })
+  .catch(error => {
+    errorBox.textContent =
+      "読み込みエラー: " + error.message;
+    console.error(error);
   });
 
-/* ===== 読了率計算（container基準） ===== */
-container.addEventListener("scroll", () => {
-  const maxScroll = container.scrollWidth - container.clientWidth;
-  const progress = 1 - container.scrollLeft / maxScroll;
+/* 進捗バーを更新 */
+function updateProgress() {
+  const maxScroll =
+    container.scrollWidth - container.clientWidth;
+
+  if (maxScroll <= 0) {
+    progressBar.style.width = "100%";
+    return;
+  }
+
+  const progress = container.scrollLeft / maxScroll;
 
   progressBar.style.width =
     Math.max(0, Math.min(progress * 100, 100)) + "%";
-});
+}
+
+/* スクロール時に進捗バーを更新 */
+container.addEventListener("scroll", updateProgress);
 </script>
 
 </body>
 </html>
+```
